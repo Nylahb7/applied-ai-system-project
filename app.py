@@ -43,36 +43,6 @@ pet = st.session_state.pet
 scheduler = Scheduler(owner=owner)
 st.session_state.setdefault("chat_history", [])
 
-st.markdown("### Tasks")
-st.caption("Add a few tasks. In your final version, these should feed into your scheduler.")
-
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    task_title = st.text_input("Task title", value="Morning walk")
-with col2:
-    task_start = st.time_input("Start time", value=time(8, 0))
-with col3:
-    duration = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=20)
-with col4:
-    priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
-
-if st.button("Add task"):
-    try:
-        warning = scheduler.add_task_safe(Task(
-            description=task_title,
-            pet=pet,
-            time=TODAY,
-            duration_minutes=int(duration),
-            priority=priority,
-            start_time=task_start.strftime("%H:%M"),
-        ))
-        if warning:
-            st.warning(warning)
-        else:
-            st.success(f"Added '{task_title}' for {pet.name}.")
-    except ValueError as e:
-        st.error(str(e))
-
 
 def _task_rows(tasks):
     return [
@@ -87,86 +57,118 @@ def _task_rows(tasks):
     ]
 
 
-pet_tasks = scheduler.get_tasks_for_pet(pet)
-st.write("Current tasks (sorted by date/time):")
-if pet_tasks:
-    for task in pet_tasks:
-        check_col, desc_col, time_col, priority_col, remove_col = st.columns(
-            [0.08, 0.37, 0.2, 0.2, 0.15]
-        )
-        with check_col:
-            done = st.checkbox("Done", value=task.completed, key=f"complete_{id(task)}", label_visibility="collapsed")
-        with desc_col:
-            st.write(task.description)
-        with time_col:
-            st.write(f"{task.start_time} · {task.duration_minutes} min")
-        with priority_col:
-            st.write(PRIORITY_ICONS.get(task.priority, task.priority))
-        with remove_col:
-            if st.button("🗑️ Remove", key=f"remove_{id(task)}"):
-                scheduler.remove_task(task)
-                st.rerun()
+tasks_tab, chat_tab = st.tabs(["📋 Tasks", "💬 Ask PawPal"])
 
-        if done != task.completed:
-            if done:
-                scheduler.complete_task(task)
+with tasks_tab:
+    st.markdown("### Tasks")
+    st.caption("Add a few tasks. In your final version, these should feed into your scheduler.")
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        task_title = st.text_input("Task title", value="Morning walk")
+    with col2:
+        task_start = st.time_input("Start time", value=time(8, 0))
+    with col3:
+        duration = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=20)
+    with col4:
+        priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
+
+    if st.button("Add task"):
+        try:
+            warning = scheduler.add_task_safe(Task(
+                description=task_title,
+                pet=pet,
+                time=TODAY,
+                duration_minutes=int(duration),
+                priority=priority,
+                start_time=task_start.strftime("%H:%M"),
+            ))
+            if warning:
+                st.warning(warning)
             else:
-                task.completed = False
-else:
-    st.info("No tasks yet. Add one above.")
+                st.success(f"Added '{task_title}' for {pet.name}.")
+        except ValueError as e:
+            st.error(str(e))
 
-st.divider()
+    pet_tasks = scheduler.get_tasks_for_pet(pet)
+    st.write("Current tasks (sorted by date/time):")
+    if pet_tasks:
+        for task in pet_tasks:
+            check_col, desc_col, time_col, priority_col, remove_col = st.columns(
+                [0.08, 0.37, 0.2, 0.2, 0.15]
+            )
+            with check_col:
+                done = st.checkbox("Done", value=task.completed, key=f"complete_{id(task)}", label_visibility="collapsed")
+            with desc_col:
+                st.write(task.description)
+            with time_col:
+                st.write(f"{task.start_time} · {task.duration_minutes} min")
+            with priority_col:
+                st.write(PRIORITY_ICONS.get(task.priority, task.priority))
+            with remove_col:
+                if st.button("🗑️ Remove", key=f"remove_{id(task)}"):
+                    scheduler.remove_task(task)
+                    st.rerun()
 
-st.subheader("Filter Tasks")
-st.caption("Filter this pet's tasks by completion status using `scheduler.filter_tasks`.")
+            if done != task.completed:
+                if done:
+                    scheduler.complete_task(task)
+                else:
+                    task.completed = False
+    else:
+        st.info("No tasks yet. Add one above.")
 
-status_choice = st.radio("Status", ["All", "Completed", "Incomplete"], horizontal=True)
+    st.divider()
 
-if status_choice == "All":
-    filtered_tasks = pet_tasks
-else:
-    filtered_tasks = scheduler.filter_tasks(pet.name, completed=(status_choice == "Completed"))
+    st.subheader("Filter Tasks")
+    st.caption("Filter this pet's tasks by completion status using `scheduler.filter_tasks`.")
 
-if filtered_tasks:
-    st.success(f"{len(filtered_tasks)} task(s) match '{status_choice}'.")
-    st.table(_task_rows(filtered_tasks))
-else:
-    st.info(f"No tasks match '{status_choice}'.")
+    status_choice = st.radio("Status", ["All", "Completed", "Incomplete"], horizontal=True)
 
-st.divider()
+    if status_choice == "All":
+        filtered_tasks = pet_tasks
+    else:
+        filtered_tasks = scheduler.filter_tasks(pet.name, completed=(status_choice == "Completed"))
 
-st.subheader("Conflict Check")
-st.caption(f"Check {TODAY} for overlapping tasks using `scheduler.find_conflicts`.")
+    if filtered_tasks:
+        st.success(f"{len(filtered_tasks)} task(s) match '{status_choice}'.")
+        st.table(_task_rows(filtered_tasks))
+    else:
+        st.info(f"No tasks match '{status_choice}'.")
 
-conflicts = scheduler.find_conflicts(TODAY)
-if conflicts:
-    for a, b in conflicts:
-        st.warning(
-            f"'{a.description}' ({a.pet.name}, {a.start_time}) overlaps with "
-            f"'{b.description}' ({b.pet.name}, {b.start_time})."
-        )
-else:
-    st.success("No conflicts detected for today.")
+    st.divider()
 
-st.divider()
+    st.subheader("Conflict Check")
+    st.caption(f"Check {TODAY} for overlapping tasks using `scheduler.find_conflicts`.")
 
-st.subheader("Ask PawPal")
-st.caption("Tell it what to change - e.g. \"move the walk to 9am\" or \"swap the walk and the feeding\".")
+    conflicts = scheduler.find_conflicts(TODAY)
+    if conflicts:
+        for a, b in conflicts:
+            st.warning(
+                f"'{a.description}' ({a.pet.name}, {a.start_time}) overlaps with "
+                f"'{b.description}' ({b.pet.name}, {b.start_time})."
+            )
+    else:
+        st.success("No conflicts detected for today.")
 
-for turn in st.session_state.chat_history:
-    with st.chat_message(turn["role"]):
-        st.write(turn["content"])
+with chat_tab:
+    st.subheader("Ask PawPal")
+    st.caption("Tell it what to change - e.g. \"move the walk to 9am\" or \"swap the walk and the feeding\".")
 
-if prompt := st.chat_input("What would you like to change?"):
-    with st.chat_message("user"):
-        st.write(prompt)
-    with st.chat_message("assistant"):
-        with st.spinner("Updating schedule..."):
-            try:
-                reply, st.session_state.chat_history = run_chat(
-                    owner, prompt, st.session_state.chat_history
-                )
-                st.write(reply)
-            except Exception as e:
-                st.error(f"Something went wrong: {e}")
-    st.rerun()
+    for turn in st.session_state.chat_history:
+        with st.chat_message(turn["role"]):
+            st.write(turn["content"])
+
+    if prompt := st.chat_input("What would you like to change?"):
+        with st.chat_message("user"):
+            st.write(prompt)
+        with st.chat_message("assistant"):
+            with st.spinner("Updating schedule..."):
+                try:
+                    reply, st.session_state.chat_history = run_chat(
+                        owner, prompt, st.session_state.chat_history
+                    )
+                    st.write(reply)
+                except Exception as e:
+                    st.error(f"Something went wrong: {e}")
+        st.rerun()
