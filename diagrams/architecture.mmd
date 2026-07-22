@@ -1,0 +1,44 @@
+flowchart TB
+    User(["Owner (user)"])
+
+    subgraph UI["Streamlit UI — app.py"]
+        TasksTab["Tasks tab\n(manual add/edit/remove/complete)"]
+        ChatTab["Ask PawPal tab\n(natural-language requests)"]
+    end
+
+    subgraph AI["AI Layer — chatbot.py"]
+        Claude["Claude (Sonnet 5)\ndecides which tool(s) to call"]
+    end
+
+    subgraph Bridge["Tool Execution — chat_tools.py"]
+        ToolFns["edit_task / add_task / swap_times\nremove_task / regenerate_plan"]
+    end
+
+    subgraph Domain["Core Domain Logic — pawpal_system.py"]
+        Scheduler["Scheduler / Owner / Schedule"]
+        Rules["Hard rule: same-pet time conflicts blocked\nSoft rule: cross-pet conflicts warned, not blocked"]
+    end
+
+    Tests[["pytest suite\ntests/test_pawpal.py, tests/test_chat_tools.py"]]
+
+    User -- "direct edits" --> TasksTab
+    TasksTab -- "add_task_safe() etc." --> Scheduler
+    Scheduler --> Rules
+
+    User -- "types request e.g.\n'move the walk to 9am'" --> ChatTab
+    ChatTab -- "prompt + current task list" --> Claude
+    Claude -- "tool_use call" --> ToolFns
+    ToolFns -- "mutates same Owner/Scheduler" --> Scheduler
+    Scheduler -- "result or conflict warning" --> ToolFns
+    ToolFns -- "tool_result" --> Claude
+    Claude -- "up to 6 tool rounds,\nthen plain-language reply" --> ChatTab
+    ChatTab -- "reply + live task list" --> User
+
+    Tests -. "verifies Scheduler + chat_tools logic\noffline, before any AI call ships" .-> Domain
+    Tests -. "verifies tool dispatch behavior" .-> Bridge
+
+    User == "HUMAN CHECK:\nsees every AI change reflected in the\nsame Tasks tab + relayed warnings;\ncan edit/undo regardless of origin" ==> TasksTab
+
+    style User fill:#e8f4fd,stroke:#333
+    style Tests fill:#fff3cd,stroke:#333
+    style Claude fill:#f0e6ff,stroke:#333

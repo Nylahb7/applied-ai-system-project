@@ -1,150 +1,95 @@
-# PawPal+ (Module 2 Project)
+# PawPal+
 
-You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
+## Original Project (Modules 1–3): PawPal+
 
-## Scenario
+This project builds on **PawPal+**, the Streamlit pet-care scheduler I designed and built in Modules 1–3. The original goal was to help a busy pet owner track care tasks (walks, feeding, meds, grooming) and turn them into a conflict-free daily plan. It let an owner register pets and tasks (with duration and priority), then used a `Scheduler`/`Owner`/`Schedule` domain model to sort tasks by time, detect same-pet vs. cross-pet scheduling conflicts, and generate a priority-ordered plan that best-fits tasks into the owner's available time windows. All of that logic was covered by an automated `pytest` suite before it was ever wired into the UI.
 
-A busy pet owner needs help staying consistent with pet care. They want an assistant that can:
+## Title and Summary
 
-- Track pet care tasks (walks, feeding, meds, enrichment, grooming, etc.)
-- Consider constraints (time available, priority, owner preferences)
-- Produce a daily plan and explain why it chose that plan
+**PawPal+** is a Streamlit app for planning pet-care tasks, now extended with an AI chat assistant ("Ask PawPal") that lets an owner restructure their schedule in plain English instead of clicking through forms. It matters because scheduling is inherently fiddly — moving one task can create a conflict with another — and a natural-language interface lets the owner say "move the walk to 9am" or "swap the walk and the feeding" and get the same validated, conflict-checked result they'd get by hand, with the reasoning explained back to them.
 
-Your job is to design the system first (UML), then implement the logic in Python, then connect it to the Streamlit UI.
+## Architecture Overview
 
-## What you will build
+The system (see [`diagrams/architecture.mmd`](diagrams/architecture.mmd)) is split into four layers:
 
-Your final app should:
+- **UI (`app.py`)** — a Streamlit app with two tabs: **Tasks**, for direct manual add/edit/remove/complete actions, and **Ask PawPal**, a chat box for natural-language requests.
+- **AI layer (`chatbot.py`)** — sends the user's message plus the current task list to Claude (Sonnet 5) along with a fixed set of tool definitions (`edit_task`, `add_task`, `swap_times`, `remove_task`, `regenerate_plan`). Claude decides which tool(s), if any, to call, and the loop runs for up to 6 tool rounds before returning a plain-language reply.
+- **Tool bridge (`chat_tools.py`)** — thin functions that translate each tool call into calls against the core domain objects and return either a confirmation string or a warning string (never a raw exception) so Claude can relay outcomes back to the user.
+- **Core domain logic (`pawpal_system.py`)** — the original `Owner`/`Pet`/`Task`/`Schedule`/`Scheduler` classes from Modules 1–3, unchanged in their conflict rules: same-pet time conflicts are a hard rule (blocked outright), cross-pet conflicts are a soft rule (added, with a warning).
 
-- Let a user enter basic owner + pet info
-- Let a user add/edit tasks (duration + priority at minimum)
-- Generate a daily schedule/plan based on constraints and priorities
-- Display the plan clearly (and ideally explain the reasoning)
-- Include tests for the most important scheduling behaviors
+Critically, both the Tasks tab and the chat tab mutate the *same* `Owner`/`Scheduler` objects. That means every AI-driven change shows up immediately in the Tasks tab, any conflict warning the domain logic raises gets relayed back through the chat, and the owner can always undo or edit an AI-made change by hand — the human stays in the loop on every write, not just the ones they typed manually.
 
-## Getting started
+## Setup Instructions
 
-### Setup
+1. **Create and activate a virtual environment**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # Windows: .venv\Scripts\activate
+   ```
+2. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. **Set your Anthropic API key** (required for the Ask PawPal tab; the Tasks tab works without it)
+   ```bash
+   export ANTHROPIC_API_KEY=your-key-here   # Windows: set ANTHROPIC_API_KEY=your-key-here
+   ```
+4. **Run the Streamlit app**
+   ```bash
+   streamlit run app.py
+   ```
+5. **Run the CLI demo** (no API key needed — exercises the domain logic directly)
+   ```bash
+   python main.py
+   ```
+6. **Run the test suite**
+   ```bash
+   pytest
+   ```
 
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
+## Sample Interactions
 
-### Suggested workflow
+**1. Moving a task by natural language**
 
-1. Read the scenario carefully and identify requirements and edge cases.
-2. Draft a UML diagram (classes, attributes, methods, relationships).
-3. Convert UML into Python class stubs (no logic yet).
-4. Implement scheduling logic in small increments.
-5. Add tests to verify key behaviors.
-6. Connect your logic to the Streamlit UI in `app.py`.
-7. Refine UML so it matches what you actually built.
+> **User:** move the walk to 9am
+>
+> **PawPal:** Moved 'Morning walk' to 2026-07-21 at 09:00.
 
-## 🖥️ Sample Output
+Behind the scenes, Claude called `edit_task(task_id=1, attr="start_time", value="09:00")`; `chat_tools.edit_task` pulled the task out, updated it, and re-added it through `add_task_safe`, which found no conflict.
 
-Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
+**2. A request that would create a conflict**
 
-```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
-```
-Today's Schedule (2026-07-06):
-  - [Mochi] Morning walk (20 min, high)
+> **User:** move the vet checkup to 8am too
+>
+> **PawPal:** I tried to move 'Vet checkup' to 08:00, but that overlaps with 'Morning walk' for Mochi at that time, so I left it where it was. Want me to pick a different time instead?
 
-## 🧪 Testing PawPal+
+Here `add_task_safe` detected a same-pet overlap (a hard constraint) and returned a warning string instead of applying the change; Claude relayed that warning in plain language rather than retrying blindly, per its system prompt.
 
-```bash
-# Run the full test suite:
-pytest
+**3. A compound request**
 
-# Run with coverage:
-pytest --cov
-```
+> **User:** swap the walk and the feeding, and add a 10 minute grooming session for Luna at 5pm, low priority
+>
+> **PawPal:** Swapped times for 'Morning walk' and 'Feed dinner', and added 'Grooming' for Luna on 2026-07-21 at 17:00.
 
-Sample test output:
+This took two tool calls in the same turn (`swap_times` then `add_task`) — the loop in `chatbot.py` supports up to 6 tool rounds so multi-step requests like this resolve in one exchange.
 
-```
-=============================== test session starts ================================
-platform win32 -- Python 3.14.5, pytest-9.1.1, pluggy-1.6.0
-rootdir: C:\Users\Nylah\OneDrive\AI110\ai110-module2show-pawpal-starter
-plugins: anyio-4.14.0
-collected 16 items                                                                  
+## Design Decisions
 
-tests\test_pawpal.py ................                                         [100%]
+- **Tool use over free-form generation.** Claude never edits the schedule directly — it can only call a fixed set of tools with a JSON schema. This keeps every change routed through the same validated domain logic (`Scheduler`, `add_task_safe`) that the manual UI uses, so the AI can't produce a state the hand-built forms couldn't also produce.
+- **Warnings as strings, not exceptions.** Tool functions in `chat_tools.py` return a warning string on conflict rather than raising, so a blocked or flagged edit becomes something Claude can read and explain, instead of crashing the tool-use loop.
+- **Shared mutable state, not a separate AI-only model.** The chat tools operate on the exact same `Owner` object as the Tasks tab. The trade-off is less isolation (a buggy tool call touches real data immediately), but it guarantees the human always sees — and can override — anything the AI did, in the same view they already trust.
+- **A capped tool-use loop (6 rounds).** Bounding the loop avoids a runaway back-and-forth if Claude keeps calling tools without converging; the trade-off is that a very long compound request could hit the cap and return a partial-progress message instead of finishing silently.
+- **String-typed tool inputs for `edit_task`.** All edit values arrive as strings and get cast internally (e.g. `int()` for `duration_minutes`) rather than using per-attribute schemas. This keeps one generic tool instead of five near-duplicate ones, at the cost of pushing type-coercion into `chatbot.py` instead of the schema itself.
+- **No persistence layer.** Both the manual and AI-driven schedule live only in Streamlit's `session_state` for the session. This kept the project scoped to scheduling logic and the AI integration rather than a database layer, at the cost of losing all data on refresh.
 
-================================ 16 passed in 0.04s ================================
+## Testing Summary
 
-The suite's 16 tests exercise recurring-task completion, conflict detection, sort/filter consistency, and priority-driven plan generation — targeting edge cases like boundary-adjacent time slots, cross-pet vs. same-pet conflicts, and duplicate pet names that the original two tests didn't cover.
+**What worked:** The 30-test `pytest` suite (`tests/test_pawpal.py`, `tests/test_chat_tools.py`) covers the domain logic and the tool bridge fully offline, with no API calls involved: sorting, filtering, same-pet vs. cross-pet conflict detection, recurring-task rollover, priority-driven plan generation, and every `chat_tools` function's success and warning paths. Because these run without hitting Claude, they verify the exact logic the AI is allowed to trigger, independent of whether the model calls it correctly.
 
-**Confidence Level**
-5 stars
-```
+**What didn't (or wasn't tested):** There's no automated coverage of `chatbot.py` itself — the actual Claude tool-selection behavior (does it pick `swap_times` vs. two `edit_task` calls for "swap X and Y"?) was verified manually by running the app and trying different phrasings, not by a repeatable test. Multi-pet plan generation in a single `generate_plan()` call also remains untested, carried over as a known gap from the original Module 2 project.
 
-## 📐 Smarter Scheduling
+**What I learned:** Testing the deterministic tool layer separately from the non-deterministic model layer was the right split — it let me be fully confident in what happens *if* a tool gets called correctly, while treating "does the model call the right tool" as a manual, exploratory concern instead of trying to write brittle assertions against LLM output.
 
-> Fill in once you've implemented scheduling logic.
+## Reflection
 
-| Feature | Method(s) | Notes |
-|---------|-----------|-------|
-| Task sorting | `Scheduler.sort_by_time()` | Sorts every task across all pets ascending by its `time` (date) attribute |
-| Filtering | `Scheduler.filter_tasks()` | Filters tasks by pet name and completion status (`completed` True/False) |
-| Conflict handling | `Scheduler.find_conflicts()`, `Scheduler.add_task_safe()` | `find_conflicts()` detects any overlapping tasks on a date (same or different pet); `add_task_safe()` blocks same-pet overlaps and warns (instead of raising) on different-pet overlaps |
-| Recurring tasks | `Task.mark_complete()`, `Scheduler.complete_task()` | Completing a `"daily"`/`"weekly"` task spins off and schedules its next occurrence automatically |
-
-## 📸 Demo Walkthrough
-
-### UI features
-
-The Streamlit app (`app.py`) lets a user:
-
-- Enter an owner name, pet name, and species to create the owner/pet in session state
-- Add a task with a title, start time, duration, and priority (low/medium/high)
-- View that pet's tasks in a table, always sorted by date/time
-- Filter the task list to All / Completed / Incomplete
-- Check today's tasks for scheduling conflicts (overlapping times, same or different pet)
-- Set an available time window and generate a prioritized daily plan, seeing which tasks were scheduled and which didn't fit
-
-### Example workflow
-
-1. Enter owner "Jordan" and pet "Mochi" (a dog).
-2. Add a task — "Morning walk", 08:00, 20 minutes, high priority. It's added and shown in the task table.
-3. Add a second task for the same time slot, e.g. "Vet checkup" at 08:00 — `add_task_safe` detects the overlap and returns a warning instead of silently double-booking Mochi.
-4. Switch the filter to "Incomplete" to confirm both tasks show up, then mark one complete to see it move under "Completed".
-5. Set an available window (e.g. 08:00–10:00) and click "Generate schedule" — the scheduler sorts tasks by priority and fits as many as possible into the window, reporting any that didn't fit.
-
-### Key Scheduler behaviors shown
-
-- **Sorting** — `get_tasks_for_pet` / `sort_by_time` always return tasks ordered by date and start time, regardless of the order they were entered.
-- **Conflict warnings** — `find_conflicts` flags any overlapping tasks on a given date; `add_task_safe` blocks a same-pet overlap outright and warns (but still adds) a different-pet overlap.
-- **Priority-driven planning** — `generate_plan_for_date` orders tasks by priority weight and best-fits them into the day's available time slots.
-
-### Sample CLI output (`main.py`)
-
-```
-Today's Schedule (2026-07-06):
-  - [Mochi] Morning walk (20 min, high)
-
-All tasks sorted by time:
-  - 2026-07-06 [Mochi] Morning walk
-  - 2026-07-07 [Luna] Feed dinner
-  - 2026-07-08 [Mochi] Vet checkup
-
-Mochi's completed tasks:
-  - 2026-07-06 Morning walk
-
-Mochi's incomplete tasks:
-  - 2026-07-08 Vet checkup
-
-Attempting to add a conflicting task:
-  Warning: 'Groom Luna' for Luna overlaps with 'Vet checkup' for Mochi on 2026-07-08.
-
-Conflicts detected on 2026-07-08:
-  - 'Vet checkup' overlaps with 'Groom Luna'
-```
-
-**Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+Extending PawPal+ with a chat interface reframed the original scheduling problem: instead of "how do I compute a valid plan," the question became "how do I expose a small, safe set of actions that an LLM can compose to reach the same valid plans a human would reach by hand." Keeping the AI confined to the same validated tool calls the UI already used turned out to be the key design choice — it meant trusting the model's *judgment* about what to do, while never trusting it to bypass the rules about *whether* a change is allowed.
