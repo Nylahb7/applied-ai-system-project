@@ -1,0 +1,34 @@
+classDiagram
+    class Owner {
+        +str name
+        +list pets
+    }
+
+    class Pet {
+        +str name
+        +str animal_type
+    }
+
+    class Task {
+        +str task_type
+        +Pet pet
+        +str day
+        +int duration_minutes
+        +str priority
+        +edit(field, value) None
+    }
+
+    class Schedule {
+        +str date
+        +list tasks
+        +list time_availabilities
+        +dict priorities
+        +add_task(task) None
+        +add_time_availability(start, end) None
+        +generate_plan() list
+    }
+
+    Owner "1" o-- "1..*" Pet : has pets
+    Owner "1" o-- "1" Schedule : has schedule
+    Schedule "1" o-- "0..*" Task : has tasks
+    Task "0..*" --> "1" Pet : is for pet

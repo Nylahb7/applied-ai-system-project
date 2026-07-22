@@ -1,0 +1,66 @@
+classDiagram
+    class Owner {
+        +str name
+        +list pets
+        +dict schedules
+        +add_pet(pet) None
+        +add_task(task) None
+        +get_all_tasks() list
+    }
+
+    class Pet {
+        +str name
+        +str animal_type
+        +list tasks
+        +add_task(task) None
+    }
+
+    class Task {
+        +str description
+        +Pet pet
+        +str time
+        +int duration_minutes
+        +str priority
+        +str start_time
+        +bool completed
+        +str recurrence
+        +edit(attr, value) None
+        +mark_complete() Task
+    }
+
+    class TimeSlot {
+        +str start
+        +str end
+    }
+
+    class Schedule {
+        +str date
+        +list tasks
+        +list time_availabilities
+        +dict priorities
+        +add_task(task) None
+        +add_time_availability(start, end) None
+        +generate_plan() list
+    }
+
+    class Scheduler {
+        +Owner owner
+        +add_task(task) None
+        +edit_task(task, attr, value) None
+        +complete_task(task) Task
+        +get_tasks_for_pet(pet) list
+        +get_tasks_for_date(date) list
+        +find_conflicts(date) list
+        +add_task_safe(task) str
+        +get_all_tasks() list
+        +sort_by_time() list
+        +filter_tasks(pet_name, completed) list
+        +generate_plan_for_date(date) list
+    }
+
+    Owner "1" o-- "1..*" Pet : has pets
+    Owner "1" o-- "0..*" Schedule : has schedules by date
+    Schedule "1" o-- "0..*" Task : has tasks
+    Schedule "1" o-- "0..*" TimeSlot : has time_availabilities
+    Task "0..*" --> "1" Pet : is for pet
+    Scheduler "1" o-- "1" Owner : manages
