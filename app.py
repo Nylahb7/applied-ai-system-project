@@ -89,7 +89,9 @@ pet_tasks = scheduler.get_tasks_for_pet(pet)
 st.write("Current tasks (sorted by date/time):")
 if pet_tasks:
     for task in pet_tasks:
-        check_col, desc_col, time_col, priority_col = st.columns([0.08, 0.42, 0.25, 0.25])
+        check_col, desc_col, time_col, priority_col, remove_col = st.columns(
+            [0.08, 0.37, 0.2, 0.2, 0.15]
+        )
         with check_col:
             done = st.checkbox("Done", value=task.completed, key=f"complete_{id(task)}", label_visibility="collapsed")
         with desc_col:
@@ -98,6 +100,10 @@ if pet_tasks:
             st.write(f"{task.start_time} · {task.duration_minutes} min")
         with priority_col:
             st.write(PRIORITY_ICONS.get(task.priority, task.priority))
+        with remove_col:
+            if st.button("🗑️ Remove", key=f"remove_{id(task)}"):
+                scheduler.remove_task(task)
+                st.rerun()
 
         if done != task.completed:
             if done:

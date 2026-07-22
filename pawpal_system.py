@@ -41,6 +41,10 @@ class Pet:
         """Record a task as belonging to this pet."""
         self.tasks.append(task)
 
+    def remove_task(self, task: Task) -> None:
+        """Remove a task previously added to this pet, if present."""
+        self.tasks = [t for t in self.tasks if t is not task]
+
 
 @dataclass
 class Task:
@@ -104,6 +108,10 @@ class Schedule:
                 )
         self.tasks.append(task)
 
+    def remove_task(self, task: Task) -> None:
+        """Remove a task from this schedule, if present."""
+        self.tasks = [t for t in self.tasks if t is not task]
+
     def add_time_availability(self, start: str, end: str) -> None:
         """Register a window of free time on this schedule's date."""
         self.time_availabilities.append(TimeSlot(start=start, end=end))
@@ -158,6 +166,13 @@ class Owner:
         self.schedules[task.time].add_task(task)
         task.pet.add_task(task)
 
+    def remove_task(self, task: Task) -> None:
+        """Remove a task from its pet and from the schedule for its date."""
+        schedule = self.schedules.get(task.time)
+        if schedule is not None:
+            schedule.remove_task(task)
+        task.pet.remove_task(task)
+
     def get_all_tasks(self) -> list[Task]:
         """Return every task across all of this owner's pets, ordered by date and time."""
         all_tasks = [task for pet in self.pets for task in pet.tasks]
@@ -184,6 +199,10 @@ class Scheduler:
         if next_task is not None:
             self.add_task(next_task)
         return next_task
+
+    def remove_task(self, task: Task) -> None:
+        """Remove a task via the owner it manages."""
+        self.owner.remove_task(task)
 
     def get_tasks_for_pet(self, pet: Pet) -> list[Task]:
         """Return all tasks belonging to a single pet, ordered by date and time."""
