@@ -56,6 +56,7 @@ class Task:
     start_time: str = "00:00"  # "HH:MM" format
     completed: bool = False
     recurrence: str | None = None  # None, "daily", or "weekly"
+    id: int | None = None  # assigned by Owner.add_task; None until then
 
     def edit(self, attr: str, value) -> None:
         """Update a single field on this task by name."""
@@ -152,6 +153,7 @@ class Owner:
     name: str
     pets: list = field(default_factory=list)
     schedules: dict[str, Schedule] = field(default_factory=dict)  # keyed by date "YYYY-MM-DD"
+    _next_task_id: int = field(default=1, repr=False)
 
     def add_pet(self, pet: Pet) -> None:
         """Register a pet as belonging to this owner."""
@@ -161,6 +163,9 @@ class Owner:
         """Add a task for one of this owner's pets, creating a schedule for its date if needed."""
         if task.pet not in self.pets:
             raise ValueError(f"Pet '{task.pet.name}' is not one of this owner's pets")
+        if task.id is None:
+            task.id = self._next_task_id
+            self._next_task_id += 1
         if task.time not in self.schedules:
             self.schedules[task.time] = Schedule(date=task.time)
         self.schedules[task.time].add_task(task)
@@ -256,6 +261,10 @@ class Scheduler:
     def get_all_tasks(self) -> list[Task]:
         """Return every task across all of the owner's pets."""
         return self.owner.get_all_tasks()
+
+    def get_task_by_id(self, task_id: int) -> Task | None:
+        """Look up a single task by its assigned id."""
+        return next((t for t in self.owner.get_all_tasks() if t.id == task_id), None)
 
     def sort_by_time(self) -> list[Task]:
         """Return every task across all of the owner's pets, sorted ascending

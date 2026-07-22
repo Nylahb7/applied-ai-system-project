@@ -2,6 +2,7 @@ from datetime import date, time
 
 import streamlit as st
 
+from chatbot import run_chat
 from pawpal_system import Owner, Pet, Scheduler, Task
 
 TODAY = date.today().isoformat()
@@ -40,6 +41,7 @@ if "pet" not in st.session_state:
 owner = st.session_state.owner
 pet = st.session_state.pet
 scheduler = Scheduler(owner=owner)
+st.session_state.setdefault("chat_history", [])
 
 st.markdown("### Tasks")
 st.caption("Add a few tasks. In your final version, these should feed into your scheduler.")
@@ -145,3 +147,26 @@ if conflicts:
         )
 else:
     st.success("No conflicts detected for today.")
+
+st.divider()
+
+st.subheader("Ask PawPal")
+st.caption("Tell it what to change - e.g. \"move the walk to 9am\" or \"swap the walk and the feeding\".")
+
+for turn in st.session_state.chat_history:
+    with st.chat_message(turn["role"]):
+        st.write(turn["content"])
+
+if prompt := st.chat_input("What would you like to change?"):
+    with st.chat_message("user"):
+        st.write(prompt)
+    with st.chat_message("assistant"):
+        with st.spinner("Updating schedule..."):
+            try:
+                reply, st.session_state.chat_history = run_chat(
+                    owner, prompt, st.session_state.chat_history
+                )
+                st.write(reply)
+            except Exception as e:
+                st.error(f"Something went wrong: {e}")
+    st.rerun()

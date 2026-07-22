@@ -340,3 +340,53 @@ def test_filter_tasks_matches_by_pet_name_across_distinct_pet_objects():
     assert len(matches) == 2
     assert any(t is task_a for t in matches)
     assert any(t is task_b for t in matches)
+
+
+# --- Task ids ---------------------------------------------------------------
+
+def test_task_id_is_none_until_added_to_owner():
+    pet = Pet(name="Milo", animal_type="dog")
+    task = Task(
+        description="Walk", pet=pet, time="2026-07-06",
+        duration_minutes=15, priority="medium",
+    )
+    assert task.id is None
+
+
+def test_add_task_assigns_sequential_ids():
+    owner = Owner(name="Sam")
+    pet = Pet(name="Milo", animal_type="dog")
+    owner.add_pet(pet)
+    scheduler = Scheduler(owner=owner)
+
+    first = Task(
+        description="Walk", pet=pet, time="2026-07-06",
+        duration_minutes=15, priority="medium", start_time="08:00",
+    )
+    second = Task(
+        description="Feed", pet=pet, time="2026-07-06",
+        duration_minutes=15, priority="medium", start_time="09:00",
+    )
+    scheduler.add_task(first)
+    scheduler.add_task(second)
+
+    assert first.id == 1
+    assert second.id == 2
+
+
+def test_get_task_by_id_finds_task_across_pets():
+    owner = Owner(name="Sam")
+    dog = Pet(name="Milo", animal_type="dog")
+    cat = Pet(name="Nala", animal_type="cat")
+    owner.add_pet(dog)
+    owner.add_pet(cat)
+    scheduler = Scheduler(owner=owner)
+
+    task = Task(
+        description="Litter box", pet=cat, time="2026-07-06",
+        duration_minutes=10, priority="low", start_time="10:00",
+    )
+    scheduler.add_task(task)
+
+    assert scheduler.get_task_by_id(task.id) is task
+    assert scheduler.get_task_by_id(9999) is None
