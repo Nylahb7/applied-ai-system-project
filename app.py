@@ -2,9 +2,11 @@ from datetime import date, time
 
 import streamlit as st
 
-from pawpal_system import Owner, Pet, Scheduler, Schedule, Task, TimeSlot
+from pawpal_system import Owner, Pet, Scheduler, Task
 
 TODAY = date.today().isoformat()
+
+PRIORITY_ICONS = {"high": "🔴 high", "medium": "🟡 medium", "low": "🟢 low"}
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -44,7 +46,6 @@ At minimum, your system should:
 
 st.divider()
 
-st.subheader("Quick Demo Inputs (UI only)")
 owner_name = st.text_input("Owner name", value="Jordan")
 pet_name = st.text_input("Pet name", value="Mochi")
 species = st.selectbox("Species", ["dog", "cat", "other"])
@@ -93,13 +94,12 @@ if st.button("Add task"):
 
 
 def _task_rows(tasks):
-    priority_icons = {"high": "🔴 high", "medium": "🟡 medium", "low": "🟢 low"}
     return [
         {
             "description": t.description,
             "start_time": t.start_time,
             "duration_minutes": t.duration_minutes,
-            "priority": priority_icons.get(t.priority, t.priority),
+            "priority": PRIORITY_ICONS.get(t.priority, t.priority),
             "completed": "✅" if t.completed else "⬜",
         }
         for t in tasks
@@ -109,7 +109,22 @@ def _task_rows(tasks):
 pet_tasks = scheduler.get_tasks_for_pet(pet)
 st.write("Current tasks (sorted by date/time):")
 if pet_tasks:
-    st.table(_task_rows(pet_tasks))
+    for task in pet_tasks:
+        check_col, desc_col, time_col, priority_col = st.columns([0.08, 0.42, 0.25, 0.25])
+        with check_col:
+            done = st.checkbox("Done", value=task.completed, key=f"complete_{id(task)}", label_visibility="collapsed")
+        with desc_col:
+            st.write(task.description)
+        with time_col:
+            st.write(f"{task.start_time} · {task.duration_minutes} min")
+        with priority_col:
+            st.write(PRIORITY_ICONS.get(task.priority, task.priority))
+
+        if done != task.completed:
+            if done:
+                scheduler.complete_task(task)
+            else:
+                task.completed = False
 else:
     st.info("No tasks yet. Add one above.")
 
@@ -145,34 +160,3 @@ if conflicts:
         )
 else:
     st.success("No conflicts detected for today.")
-
-st.divider()
-
-st.subheader("Build Schedule")
-st.caption("Set today's available time window, then generate a plan that fits your tasks into it.")
-
-avail_col1, avail_col2 = st.columns(2)
-with avail_col1:
-    avail_start = st.time_input("Available from", value=time(8, 0))
-with avail_col2:
-    avail_end = st.time_input("Available until", value=time(10, 0))
-
-if st.button("Generate schedule"):
-    schedule = owner.schedules.setdefault(TODAY, Schedule(date=TODAY))
-    schedule.time_availabilities = [
-        TimeSlot(start=avail_start.strftime("%H:%M"), end=avail_end.strftime("%H:%M"))
-    ]
-
-    plan = scheduler.generate_plan_for_date(TODAY)
-    if plan:
-        st.success(f"Scheduled {len(plan)} of {len(pet_tasks)} task(s) for {TODAY}.")
-        st.table(_task_rows(plan))
-
-        scheduled_ids = {id(t) for t in plan}
-        skipped = [t for t in pet_tasks if id(t) not in scheduled_ids]
-        if skipped:
-            st.warning(
-                "Didn't fit in the available window: " + ", ".join(t.description for t in skipped)
-            )
-    else:
-        st.info("No tasks fit in the available time window.")
